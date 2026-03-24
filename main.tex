@@ -1,0 +1,297 @@
+\documentclass[11pt]{article}
+
+\usepackage[left=1in,right=1in,top=0.9in,bottom=0.9in]{geometry}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{setspace}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{bm}
+\usepackage{indentfirst}
+
+
+\title{Bayesian Inference for Midge Wing-Length Data:\A Deep Comparative Report of Fixed Variance Priors and Hierarchical Variance Priors}
+\author{Ruitian Liu \and Yifan Li \and Huanjie Dong \and Yuxiao Tan}
+\date{March 2026}
+
+\begin{document}
+\maketitle
+\begin{abstract}
+This report studies Bayesian inference for the mean and variance of midge wing-length data under a normal sampling model. Using the nine observations provided in the STA 145 final project, we compare a baseline model with a fixed variance-prior scale (Case 1) to a hierarchical model in which the variance-prior scale is itself random and assigned an additional Gamma prior layer (Case 2). The main purpose is not only to estimate the population mean $\theta$ and variance $\sigma^2$, but also to examine how hyperprior choices affect posterior marginal inference, posterior dependence, joint posterior geometry, predictive fit, and MCMC efficiency. The results show a clear asymmetry: posterior inference for $\theta$ is relatively robust across prior settings, whereas posterior inference for $\sigma^2$ is substantially more sensitive to the hierarchical prior structure. The hierarchical model can improve predictive fit and modestly stabilize inference for $\theta$, but these gains come with stronger posterior coupling among variance-related parameters and somewhat poorer mixing for $\sigma^2$. Thus, the central conclusion is that hierarchical variance priors are beneficial when they are paired with sufficiently strong hyperprior regularization, rather than being used in an unrestricted form.
+\end{abstract}
+
+\section{Introduction}
+
+In insect taxonomy and public-health-related entomological studies, the accurate classification of morphologically similar species is often of substantial scientific importance. Small differences in measurable anatomical traits may correspond to major differences in biological role, ecological niche, or epidemiological relevance. For this reason, quantitative morphological analysis has long served as an important bridge between biological observation and statistical inference. In the classical example studied in this project, Grogan and Wirth (1981) reported wing-length measurements for nine members of a species of midge. 
+
+The statistical challenge of this problem is not merely to estimate a mean and a variance from nine observations. Rather, the deeper issue is how inferential conclusions change when prior information about variability is treated in different ways. In small samples, inference on the variance is often unstable, and any prior specification on the variance scale may exert a substantial effect on posterior conclusions. Bayesian analysis is particularly well suited to this setting because it allows the analyst to combine sample information with biologically motivated prior knowledge, while also quantifying the uncertainty introduced by that prior knowledge itself.
+
+The project compares two models. In Case 1, the variance-prior scale is fixed, producing a standard conjugate analysis that is computationally straightforward and conceptually clean. In Case 2, the variance-prior scale is treated as random and assigned an additional Gamma prior layer, with its own hyperparameter $\beta$. This hierarchical structure creates a richer model that can adapt more flexibly to uncertainty in the variance component, but it may also generate stronger posterior dependence and more difficult MCMC behavior. The key question is thus not simply which model gives a different posterior mean, but how the entire posterior analysis---including marginal distributions, joint dependence, credible intervals, predictive fit, and sampling efficiency---changes once prior uncertainty about the variance scale is itself modeled.
+
+More broadly, this problem illustrates a central principle of Bayesian modeling: prior assumptions are not passive inputs, but active structural components that shape both inferential conclusions and computational behavior. In this report, we show that the distinction between fixed and hierarchical variance priors matters far more for posterior inference on $\sigma^2$ than for inference on $\theta$. We also show that the effect of hierarchical modeling is not unidirectional: it may yield improved predictive fit and more realistic uncertainty propagation, but these gains can come at the cost of posterior coupling and MCMC mixing. The analysis is therefore not framed as a search for a universally ``best'' model, but as a principled investigation of the trade-off between inferential flexibility and computational stability.
+
+\section{Biological and Data Background}
+
+The data analyzed in this report consist of nine wing-length measurements, in millimeters, for members of a species of midge:
+\[
+(1.64, 1.70, 1.72, 1.74, 1.82, 1.82, 1.82, 1.90, 2.08),
+\]
+with sample mean $\bar y = 1.804$. The project asks us to use these observations to draw inference on the population mean wing length $\theta$ and population variance $\sigma^2$.
+
+Although the numerical dataset is small, it is rich enough to highlight several important statistical issues. First, the sample size is only $n=9$, which means that likelihood-based information about variability is limited. Second, the sample mean $1.804$ lies somewhat below the biologically motivated prior center of $1.9$, creating a natural setting in which posterior inference must reconcile prior location information with observed sample evidence. Third, the data exhibit some visible spread, with minimum value $1.64$ and maximum value $2.08$, so that even modest changes in prior assumptions on the variance can materially affect posterior conclusions. For these reasons, the midge wing-length example is particularly suitable for studying the role of prior specification in Bayesian inference.
+
+A simple descriptive summary helps motivate the later posterior analysis. The ordered sample suggests a relatively compact cluster around $1.8$ with one moderately larger observation at $2.08$. This does not by itself imply any outlier structure in a formal sense, but it does indicate that the sample variance may be sensitive to small modeling changes. In frequentist analysis, such a small sample would often lead to imprecise variance estimation and wide uncertainty intervals. In contrast, the Bayesian approach allows us to stabilize inference through prior modeling while still acknowledging the possibility that prior assumptions themselves may be uncertain. This motivates the comparison between the fixed-prior-scale baseline and the hierarchical extension.
+
+\section{Model Setup and Prior Specification}
+
+\subsection{Sampling Model}
+
+Throughout the report, we assume the standard normal sampling model $Y_i \mid \theta,\sigma^2 \overset{\mathrm{iid}}{\sim} N(\theta,\sigma^2)$, and $i=1,\dots,n$.
+Here $\theta$ denotes the population mean wing length and $\sigma^2$ denotes the population variance. Because the sample size is very small, prior assumptions play a substantial role in regularizing the posterior, especially for $\sigma^2$.
+
+For computational convenience, we work with the precision parameter $\tilde{\sigma}^2 = \frac{1}{\sigma^2}$,
+since the Gamma distribution is conjugate to the normal likelihood for the precision. This choice allows the full conditional distributions in both Case 1 and Case 2 to take standard parametric forms, which in turn makes Gibbs sampling feasible without introducing a Metropolis--Hastings step.
+
+\subsection{Prior for the Mean Parameter}
+
+The project specifies that studies from other populations suggest wing lengths are typically around $1.9$ mm, so we take $\mu_0 = 1.9$. Because wing length must be positive, the project further suggests approximating the restriction $\theta > 0$ by choosing the prior standard deviation $\tau_0$ so that $\mu_0 - 2\tau_0 > 0$. This leads to the choice $\tau_0 = 0.95$, which is intentionally somewhat diffuse and therefore only weakly informative. The resulting prior for the mean is $\theta \sim N(\mu_0,\tau_0^2)$.
+The project also sets $\kappa_0 = \nu_0 = 1$ so that the prior remains weakly centered around information from other populations rather than strongly constraining inference.
+
+\subsection{Case 1: Fixed Variance-Prior Scale}
+
+In the baseline model, the prior for the precision is $\tilde{\sigma}^2 \sim \mathrm{Gamma}\left(\frac{\nu_0}{2},\frac{\nu_0}{2}\sigma_0^2\right)$
+with $\sigma_0^2$ treated as fixed. The project states that prior information suggests $E(\sigma_0^2)=0.01$,
+so in Case 1 the variance-prior scale is externally specified rather than learned from the data. Combined with the normal prior for $\theta$, the joint prior is
+\[
+p(\theta,\tilde{\sigma}^2)=p(\theta)\,p(\tilde{\sigma}^2).
+\]
+This model is analytically tractable and computationally efficient. It provides a natural benchmark because posterior uncertainty arises only through $(\theta,\sigma^2)$, without additional uncertainty in the variance hierarchy.
+
+\subsection{Case 2: Hierarchical Variance-Prior Scale}
+
+To address this limitation, Case 2 introduces a hierarchical prior:
+\[
+p(\theta,\tilde{\sigma}^2,\sigma_0^2,\beta)
+=
+p(\theta)\,p(\tilde{\sigma}^2\mid \sigma_0^2)\,p(\sigma_0^2\mid \beta)\,p(\beta),
+\]
+where
+\[
+\theta \sim N(\mu_0,\tau_0^2), \qquad
+\tilde{\sigma}^2 \mid \sigma_0^2 \sim \mathrm{Gamma}\left(\frac{\nu_0}{2},\frac{\nu_0}{2}\sigma_0^2\right),
+\]
+\[
+\sigma_0^2 \mid \beta \sim \mathrm{Gamma}(a,\beta), \qquad
+\beta \sim \mathrm{Gamma}(b_1,b_2).
+\]
+Here $\sigma_0^2$ becomes an unknown parameter rather than a fixed input, and $\beta$ governs the degree of regularization on the variance-prior scale. This transforms the problem from a single-layer conjugate model into a hierarchical Bayesian model in which uncertainty about variability is explicitly propagated upward through additional prior levels.
+
+The inferential meaning of Case 2 is substantial. Instead of assuming that the prior scale $0.01$ is correct, the model allows the data to update beliefs about that scale. This added flexibility is scientifically appealing because it admits the possibility that the current sample may come from a population with variance behavior different from the populations that motivated the original prior guess. At the same time, the extra flexibility creates additional pathways of posterior dependence. As a result, Case 2 can improve inferential realism while also making posterior geometry more complicated.
+
+\section{Hyperprior Sensitivity Design}
+
+To satisfy the project requirement that the hyperparameter choices be meaningfully distinct, we consider a $3\times 3$ factorial design over the hyperparameters in Case 2. The shape parameter $a$ in the prior for $\sigma_0^2\mid\beta$ is chosen from $a \in \{0.1,\ 2,\ 10\}$ and the prior for $\beta$ is chosen from three Gamma distributions with common prior mean
+\[
+E(\beta)=\frac{b_1}{b_2}=0.01,
+\quad
+(b_1,b_2) \in \{(0.1,10),\ (2,200),\ (10,1000)\}.
+\]
+These are interpreted as weak, medium, and strong prior strength, respectively, because they differ in concentration while preserving the same prior mean. This yields nine distinct prior settings in total.
+
+These choices are substantively different in their geometric and inferential implications. When $a=0.1$, the Gamma prior for $\sigma_0^2\mid\beta$ is highly right-skewed, with large mass near zero but a long upper tail. This creates a highly diffuse variance hierarchy and effectively behaves like a heavy-tailed prior on the variance scale. When $a=2$, the prior becomes much more regular and serves as an intermediate choice. When $a=10$, the prior is substantially more concentrated, reflecting stronger prior confidence about the scale of variability. Likewise, the three $\beta$ priors differ not in location but in concentration. This design lets us assess how shape flexibility through $a$ and scale stabilization through the prior concentration on $\beta$ jointly affect posterior behavior.
+
+\section{Full Conditional Distributions and Gibbs Sampling}
+
+Let $\bar y = \frac{1}{n}\sum_{i=1}^n y_i$, and $\mathrm{SSE}(\theta)=\sum_{i=1}^n (y_i-\theta)^2$. Because the normal likelihood is paired with conjugate normal and Gamma priors, the full conditional distributions in both Case 1 and Case 2 are standard.
+
+For Case 1, the full conditional distribution of $\theta$ and the full conditional for $\tilde{\sigma}^2$ is
+\[
+\theta \mid \tilde{\sigma}^2,y
+\sim
+N\left(
+\frac{n\bar y\,\tilde{\sigma}^2+\mu_0/\tau_0^2}{n\tilde{\sigma}^2+1/\tau_0^2},
+\frac{1}{n\tilde{\sigma}^2+1/\tau_0^2}
+\right),
+\quad
+\tilde{\sigma}^2 \mid \theta,y
+\sim
+\mathrm{Gamma}\left(
+\frac{n+\nu_0}{2},
+\frac{\mathrm{SSE}(\theta)}{2}+\frac{\nu_0\sigma_0^2}{2}
+\right).
+\]
+Thus, the Gibbs sampler for Case 1 alternates directly between these two updates.
+
+For Case 2, full condition of $\theta$ and $\tilde{\sigma}^2$ is same as Case 1, and the hierarchical structure introduces two additional full conditional distributions are:
+\[
+\sigma_0^2 \mid \tilde{\sigma}^2,\beta
+\sim
+\mathrm{Gamma}\left(
+ a+\frac{\nu_0}{2},
+ \beta+\frac{\nu_0}{2}\tilde{\sigma}^2
+\right),
+\quad
+\beta \mid \sigma_0^2
+\sim
+\mathrm{Gamma}(a+b_1,\ b_2+\sigma_0^2).
+\]
+The Gibbs sampler thus cycles through
+\[
+\theta \longrightarrow \tilde{\sigma}^2 \longrightarrow \sigma_0^2 \longrightarrow \beta.
+\]
+
+For each prior setting, we ran the Gibbs sampler for 10,000 iterations, discarded the first 2,000 draws as burn-in, and retained the remaining 8,000 draws for posterior inference. 
+
+This blockwise structure is attractive because every update remains exact and no acceptance-rejection step is required. However, even when each full conditional is standard, the joint posterior may still be strongly coupled, and this can noticeably slow mixing. 
+
+\section{Posterior Inference: Mean and Variance}
+
+\subsection{Posterior Inference for $\theta$}
+
+The posterior analysis shows that inference for the mean parameter $\theta$ is remarkably stable across the nine Case 2 hyperprior settings. In summary, the posterior mean of $\theta$ remains close to the Case 1 benchmark, typically varying only within a narrow range around roughly $1.825$ to $1.830$. This stability suggests that even with only nine observations, the likelihood contains enough direct information about the central location of the wing-length distribution that the introduction of hierarchical uncertainty in $\sigma_0^2$ does not materially shift the posterior center of $\theta$.
+
+This does not mean that prior choice is irrelevant for $\theta$. Rather, the primary effect appears in posterior uncertainty rather than in posterior location. Across different prior settings, the credible intervals for $\theta$ vary moderately, with weaker regularization tending to yield somewhat wider intervals. This is exactly what hierarchical modeling would lead us to expect: uncertainty in $\sigma_0^2$ and $\beta$ propagates into uncertainty in $\tilde{\sigma}^2$, which then propagates into the posterior variance of $\theta$. Therefore, for the mean parameter, the effect of hierarchical prior modeling is mainly to alter the precision of posterior inference rather than to change the inferred center in a dramatic way.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{thetaCI.pdf}
+    \caption{Posterior mean and 95\% credible interval for $\theta$ under the nine Case 2 hyperprior settings, with the Case 1 posterior mean shown as a reference. The figure shows that the posterior center of $\theta$ is highly stable across prior specifications, while the interval width changes modestly as hierarchical uncertainty is varied. This supports the interpretation that prior sensitivity for the mean operates mainly through uncertainty quantification rather than posterior location.}
+    \label{fig:theta_ci}
+\end{figure}
+
+Figure~\ref{fig:theta_ci} makes this point visually clear. Across strong, medium, and weak settings for the prior on $\beta$, and across the three values of $a$, the posterior means of $\theta$ stay close together. The lack of large movement in the posterior center is itself informative: it indicates that the data, not the prior hierarchy, are driving inference on the location parameter. At the same time, the slight widening of intervals under weaker regularization confirms that hierarchical uncertainty is not irrelevant; it is simply expressed more through posterior spread than through posterior shift.
+
+\subsection{Posterior Inference for $\sigma^2$}
+
+In contrast, posterior inference for $\sigma^2$ is much more sensitive to the hyperprior specification. It shows that the posterior mean and 95\% credible interval for $\sigma^2$, plotted on a log scale, vary noticeably across the nine Case 2 settings. This variation is much larger than the corresponding variation for $\theta$, and that asymmetry is one of the central empirical findings of the project.
+
+This is statistically natural in a small-sample normal model. The sample provides comparatively strong information about the population location but much weaker information about the variance. Consequently, when the analyst introduces an additional hierarchical layer on the variance-prior scale, the posterior for $\sigma^2$ becomes much more exposed to the prior structure. In settings where $a$ is small and the prior on $\beta$ is weak, the posterior for $\sigma^2$ becomes visibly broader and more right-skewed, indicating that the model is willing to entertain much larger variance values. In more strongly regularized settings, especially with larger $a$ or stronger concentration on $\beta$, the posterior for $\sigma^2$ becomes more concentrated and more similar to the Case 1 baseline.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{sigma-mean.pdf}
+    \caption{Posterior mean and 95\% credible interval for $\sigma^2$ under the nine Case 2 hyperprior settings, shown on a log scale. Compared with the corresponding figure for $\theta$, the posterior summaries for $\sigma^2$ vary much more strongly across prior choices. This confirms that variance inference is the main locus of prior sensitivity in the present small-sample problem.}
+    \label{fig:sigma_ci}
+\end{figure}
+
+Figure~\ref{fig:sigma_ci} shows that the hierarchical model does not merely ``add uncertainty'' in an abstract sense. Instead, it changes the structure of the posterior for $\sigma^2$ in a directional and interpretable way. Heavy-tailed prior shapes for $\sigma_0^2$ allow the model to explain the observed spread through larger variance values, whereas stronger hyperprior regularization on $\beta$ restrains this behavior and stabilizes posterior inference. In small biological datasets, this is precisely where hierarchical modeling can be most consequential.
+\subsection{Marginal Posterior Distributions of $\sigma_0^2$ and $\beta$}
+
+The results in Section 6.2 show that posterior inference for $\sigma^2$ is substantially more
+sensitive to hyperprior choice than posterior inference for $\theta$. To understand where this
+sensitivity comes from, it is useful to examine the two additional quantities introduced by the
+hierarchical model, namely the variance-prior scale $\sigma_0^2$ and its regularization parameter
+$\beta$. In Case 2, these parameters are not fixed inputs; rather, they are themselves learned from
+the data through the hierarchical prior. Their marginal posterior distributions therefore reveal how
+the model reallocates uncertainty within the variance hierarchy.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{sigma.pdf}
+    \caption{Posterior mean and 95\% credible interval for $\sigma_0^2$ under the nine Case 2
+    hyperprior settings. The figure shows that the learned variance-prior scale is highly sensitive to
+    the hierarchical specification, with especially large posterior movement when $a$ is moderate or
+    large and the prior on $\beta$ is weak.}
+    \label{fig:sigma}
+\end{figure}
+
+Figure~\ref{fig:sigma} shows that the posterior of $\sigma_0^2$ changes substantially across the nine prior settings. When $a=0.1$, the posterior summaries of $\sigma_0^2$ remain comparatively small and fairly similar across strong, medium, and weak priors on $\beta$. This suggests that when the conditional prior on $\sigma_0^2$ is highly right-skewed, much of the posterior mass remains
+near small values of the variance-prior scale regardless of the exact concentration placed on $\beta$. By contrast, when $a=2$ or $a=10$, the posterior of $\sigma_0^2$ becomes much more sensitive to the amount of regularization on $\beta$, and the three prior-strength settings separate clearly.
+
+This pattern is substantively important. It shows that prior sensitivity in Case 2 is not merely a surface feature of the posterior for $\sigma^2$; it is generated internally through the way the hierarchical model learns the variance-prior scale itself. In particular, weak regularization allows $\sigma_0^2$ to move much farther from the baseline scale, whereas stronger regularization keeps the hierarchy in a more stable range. Thus, the dispersion seen earlier in the posterior of $\sigma^2$ is closely tied to the extent to which $\sigma_0^2$ is permitted to drift upward. 
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{beta.pdf}
+    \caption{Posterior mean and 95\% credible interval for $\beta$ under the nine Case 2 hyperprior settings, with the common prior mean $E(\beta)=0.01$ shown as a dashed reference line. Stronger priors keep the posterior of $\beta$ close to its prior center, whereas weak regularization allows substantial upward posterior drift, especially for larger values of $a$.}
+    \label{fig:beta}
+\end{figure}
+
+Figure~\ref{fig:beta} complements this interpretation by showing how the hyperparameter $\beta$ responds under the same nine settings. Under the strong and medium priors, the posterior of $\beta$ remains close to the common prior mean across all three values of $a$, indicating that these priors effectively anchor the scale-controlling component of the hierarchy. Under the weak prior, however, the posterior of $\beta$ shifts markedly upward, and this effect becomes especially large when $a$ increases. In these settings, the model is no longer simply expressing greater posterior uncertainty; it is learning a substantially different effective scale for the variance hierarchy.
+
+Taken together, Figures~\ref{fig:sigma} and~\ref{fig:beta} clarify the mechanism behind the earlier results for $\sigma^2$. Posterior inference for the mean parameter $\theta$ remains relatively stable because $\theta$ is only indirectly affected by the hierarchy. The variance component, however, is much more exposed to hierarchical reweighting: once $\sigma_0^2$ and $\beta$ are allowed to adjust jointly, changes in hyperprior shape and concentration can propagate strongly into posterior inference for $\sigma^2$. This also anticipates the next section. If the variance hierarchy is responsible for most of the prior sensitivity, then stronger posterior dependence among $\sigma^2$, $\sigma_0^2$, and $\beta$ should be expected, especially under weakly regularized settings.
+
+\section{Posterior Dependence and Joint Structure}
+
+Marginal posterior summaries do not fully capture the behavior of a hierarchical Bayesian model. Prior choice may also alter the dependence structure of the posterior, and this dependence has direct consequences for both interpretation and computation.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.1\textwidth]{correlation.pdf}
+    \caption{Posterior correlation heatmap for selected parameter pairs across the nine Case 2 prior settings. Greener cells indicate weaker dependence within each parameter pair after within-pair standardization. The figure shows that $\theta$ remains only weakly linked to variance-related quantities, whereas $\sigma^2$, $\sigma_0^2$, and $\beta$ can become strongly coupled under weakly regularized settings.}
+    \label{fig:corr_heatmap}
+\end{figure}
+
+The correlation structure in Figure~\ref{fig:corr_heatmap} reveals a clear asymmetry. Weak association between $\theta$ and the other parameters helps explain why posterior inference for the mean is comparatively robust. By contrast, stronger dependence among $\sigma^2$, $\sigma_0^2$, and $\beta$ indicates that the hierarchical model creates an internally coupled variance system. In some weakly regularized settings, the correlations involving variance-related parameters become quite large in magnitude, suggesting that posterior mass lies along narrow or elongated regions of parameter space. This is not merely a descriptive curiosity; it is part of the mechanism through which hierarchical priors affect both uncertainty quantification and MCMC efficiency.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.1\textwidth]{joint-density.pdf}
+    \caption{Joint posterior density of $\theta$ and $\log(\sigma^2)$ under the nine Case 2 prior settings. More compact and near-elliptical contours correspond to weaker dependence and more regular posterior geometry, while more diffuse or elongated contours indicate stronger coupling and broader variance uncertainty.}
+    \label{fig:joint_theta_sigma}
+\end{figure}
+
+The joint posterior plots in Figure~\ref{fig:joint_theta_sigma} reinforce this interpretation. In more stable settings, the joint contours are relatively compact and close to elliptical, indicating weaker dependence and more regular posterior geometry. In weaker settings, especially when $a$ is small, the contours become more diffuse and elongated, suggesting stronger coupling and broader variance uncertainty. This geometric change matters because a Gibbs sampler moves less efficiently through elongated or ridge-like posterior regions. Thus, the joint posterior plots are not secondary illustrations; they are visual evidence of how the prior structure reshapes the target distribution.
+
+\section{MCMC Diagnostics and Computational Interpretation}
+
+We summarizes MCMC diagnostics through heatmaps of ESS/S, MCSE/SD, and ACF$_1$ across the nine Case 2 settings. The results show a clear contrast between $\theta$ and $\sigma^2$: the mean parameter mixes extremely well, with ESS close to the chain length and lag-1 autocorrelation near zero, whereas the variance parameter often mixes much more slowly.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.1\textwidth]{mixing.pdf}
+    \caption{MCMC diagnostic heatmap for the nine Case 2 settings. The displayed measures are ESS/S, MCSE/SD, and ACF$_1$, shown separately for $\theta$ and $\sigma^2$. Greener values indicate better mixing after within-metric standardization. The figure shows that $\theta$ mixes almost ideally, whereas $\sigma^2$ is substantially harder to sample under several hierarchical settings.}
+    \label{fig:mcmc_heatmap}
+\end{figure}
+
+This difference is not accidental. It is the computational expression of the same structural story already seen in the posterior correlation and joint density plots. Since $\theta$ is only weakly tied to the rest of the hierarchy, its full conditional updates allow the chain to move rapidly through its marginal posterior. In contrast, $\sigma^2$ is entangled with $\sigma_0^2$ and $\beta$, so that the chain must navigate a more constrained and correlated posterior region. As a result, ESS for $\sigma^2$ can fall substantially below that for $\theta$, and lag-1 autocorrelation can remain high. This indicates slower exploration of the posterior and greater Monte Carlo dependence across iterations.
+
+An important conceptual lesson follows. Even when all full conditionals belong to standard families and the Gibbs sampler is easy to code, hierarchical modeling can still create computationally difficult posterior geometry. Poorer mixing of $\sigma^2$ should therefore not be interpreted as a coding flaw by default. Rather, it often reflects genuine posterior dependence induced by the model itself. This is one of the reasons why Bayesian model assessment should never rely only on posterior means and intervals; sampling diagnostics are an essential part of the inferential story.
+
+\section{Prior Sensitivity Analysis}
+\subsection{Within Case 2}
+Within Case 2, we compare the nine prior settings using criteria such as posterior mean $E[\beta]$, posterior standard deviation of $\theta$, and WAIC. The best overall performing hierarchical model is identified as the setting with $a = 0.1$, $\beta\sim\Gamma(10,1000)$. This is an especially interesting result because it combines the most flexible prior shape for $\sigma_0^2$ with the strongest regularization on $\beta$.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{model-preference.pdf}
+    \caption{Case 2 prior-sensitivity comparison across the nine hyperprior settings using posterior mean $E[\beta]$, posterior standard deviation of $\theta$, and WAIC. Greener values indicate better performance after within-metric standardization. The strongest overall configuration balances flexibility in the shape prior with strong regularization on the scale-controlling hyperparameter.}
+    \label{fig:case1_vs_case2}
+\end{figure}
+
+
+Figure~\ref{fig:case1_vs_case2} suggests that the best-performing Case~2 specification is the setting with
+$a=0.1$ and $\beta \sim \Gamma(10,1000)$. At first glance, this result may appear
+counterintuitive, since a small shape parameter implies a more diffuse and heavy-tailed
+prior shape for $\sigma_0^2$, whereas $\Gamma(10,1000)$ is the strongest prior among
+the three alternatives for $\beta$. However, these two hyperparameters govern different
+aspects of the hierarchy. A small $a$ preserves flexibility in the shape of the prior for
+$\sigma_0^2$, while a strong prior on $\beta$ regularizes the scale of that hierarchy and
+prevents excessive instability. The preferred specification therefore reflects a balance
+between flexibility and regularization rather than an extreme in either direction.
+
+\subsection{Between Case 1 and the Best Case 2 Model}
+
+After identifying the best-performing hierarchical model, the next question is whether it improves meaningfully upon the simpler baseline model. As interpreted in Figure ~\ref{fig:case2_compare}, the comparison between Case 1 and the preferred Case 2 specification shows that the hierarchical model yields modest but consistent gains in predictive fit and some aspects of posterior stability for \(\theta\). In particular, measures such as WAIC and lppd improve slightly, and the posterior uncertainty for \(\theta\) may be somewhat reduced. This suggests that allowing uncertainty in the variance-prior scale can improve the overall inferential calibration of the model.
+
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1.05\textwidth]{model-comparison (2).pdf}
+    \caption{Comparison between Case 1 and the best-performing Case 2 model. Positive bars indicate improvement of the selected hierarchical model relative to Case 1. The figure shows modest gains in fit and some posterior summaries for $\theta$, alongside some deterioration in mixing diagnostics for $\sigma^2$.}
+    \label{fig:case2_compare}
+\end{figure}
+
+However, these improvements are not free. The same comparison also shows that some mixing diagnostics for \(\sigma^2\) deteriorate under the hierarchical model. Effective sample size decreases, and autocorrelation increases. Thus, Case 2 does not uniformly dominate Case 1. Instead, it offers a more realistic and flexible treatment of variance-prior uncertainty at the cost of a more difficult posterior for variance-related computation.
+
+
+\section{Discussion and Conclusion}
+
+Across all nine hierarchical prior settings, inference for $\theta$ is relatively robust, with posterior means remaining close across models and prior choice affecting primarily the width of the credible intervals. By contrast, posterior inference for $\sigma^2$ is strongly shaped by the prior hierarchy. This asymmetry is exactly what one would expect in a normal model with only nine observations: the likelihood is informative about location, but comparatively weak about scale.
+
+The hyperparameter $a$ plays a central role in shaping the variance hierarchy. Small $a$ values generate a diffuse, effectively heavy-tailed prior on $\sigma_0^2$, which increases flexibility but can also destabilize posterior inference and induce stronger dependence among variance-related parameters. Stronger regularization through the prior on $\beta$ counteracts this effect by shrinking the effective scale of the hierarchy into a more stable range. The best-performing hierarchical model therefore reflects a balance rather than an extreme: it keeps enough shape flexibility to adapt to the data, but controls scale strongly enough to avoid severe posterior instability.
+
+\end{document}
